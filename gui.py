@@ -43,7 +43,7 @@ HELP_OPTIONS = (
      "Соль добавляется к пути перед CityHash64 и меняет все хеши архива. HashFS v2 по умолчанию получает случайную ненулевую соль. HashFS v1 по умолчанию использует 0; при ненулевой соли пакер создаёт совместимую ZIP-заглушку stub_salt0.scs.",
      r"-fs=v2 --salt=random"),
     ("Безопасность скрытия",
-     "Модели и материалы игра обычно находит по прямым ссылкам, но прописка def, unit/*.sii, locale и секторы карты могут зависеть от списков каталогов. Обычное -h скрывает их только при подтверждении пути через original_game_paths, reference или текстовую ссылку. Все /unit/**/*.sui разрешено скрывать всегда. -fh полностью обходит защиту.",
+     "Модели и материалы игра обычно находит по прямым ссылкам, но прописка def, unit/*.sii, locale и секторы карты могут зависеть от списков каталогов. Обычное -h скрывает их только при подтверждении пути через original_game_paths, reference или текстовую ссылку. Все .sui разрешено скрывать всегда независимо от каталога. -fh полностью обходит защиту.",
      r"-h=all -ref .\base.scs"),
     ("HashFS v2 и GDeflate",
      "В HashFS v2 корректная пара TOBJ+DDS объединяется в одну текстурную запись. DDS переводится в DX10 при необходимости и поверхность сжимается GDeflate. Если одна DDS используется несколькими TOBJ, её данные входят в каждую самостоятельную пару.",
@@ -61,7 +61,7 @@ HELP_OPTIONS = (
      "Один или несколько выходных архивов. Входы делятся на последовательные группы. Например, семь входов и три выхода распределяются как 3, 3 и 1.",
      r"-o .\part1.scs .\part2.scs"),
     ("--file-system, -fs", "Формат результата: hashfsv2/v2, hashfsv1/v1, eZIP/ez или AEM/aem. По умолчанию используется HashFS v2.", "-fs=v2"),
-    ("--compression-method, -cm", "Сжатие обычных записей HashFS: max, medium, min или no. Игра штатно читает сжатые записи, а практическая разница в скорости обычно почти отсутствует. Режим no в основном лишь значительно увеличивает размер архива. GDeflate-текстуры HashFS v2 обрабатываются обязательно независимо от этого параметра.", "-cm=max"),
+    ("--compression-method, -cm", "Уровень сжатия всех HashFS payload: max, medium, min или no. Для HashFS v2 параметр также выбирает BEST_RATIO, DEFAULT, FASTEST либо raw-поверхность GDeflate-текстуры. Игра штатно читает сжатые записи, поэтому no в основном лишь значительно увеличивает размер архива.", "-cm=max"),
     ("--salt, -salt", "Соль хешей HashFS: 0…65535, шестнадцатеричное число либо random. По умолчанию: random для v2 и 0 для v1.", "--salt=random"),
     ("--table-mode, -tm", "Режим таблиц HashFS. Для v1 — 1…4. Для v2 задаёт позиции t/m и сжатие: например 1t2mum, 2t2mc или random.", "-tm=2t2mc"),
     ("-e <список>, -e=all", "Зашифровать выбранные SII оболочкой 3nK. Значение all выбирает все упаковываемые SII.", "-e=all"),
@@ -111,7 +111,7 @@ HashFS v2 по умолчанию использует случайную нен
 Значение random выбирается заново при каждой упаковке. Явное число делает сборку воспроизводимой: одинаковые пути и соль дают одинаковые хеши, хотя сжатые байты и расположение таблиц всё равно могут зависеть от других настроек.""",
     "Безопасность скрытия": """Скрытие означает удаление имени из листинга каталога при сохранении самой хешированной записи. Оно безопасно только тогда, когда игра уже знает точный путь. Модели, материалы, TOBJ и многие DDS обычно достигаются по прямым ссылкам из других ресурсов, поэтому их можно скрывать значительно свободнее.
 
-Прописка def, файлы /unit/**/*.sii, локализация locale и секторы карты чувствительнее. Игра или другой мод может перечислять соответствующий каталог вместо обращения к заранее известному имени. Если убрать единственный источник имени, запись физически останется в архиве, но игра её не запросит. Все /unit/**/*.sui считаются безопасными для скрытия; для unit/*.sii по-прежнему требуется original_game_paths, reference либо явная текстовая ссылка.
+Прописка def, файлы /unit/**/*.sii, локализация locale и секторы карты чувствительнее. Игра или другой мод может перечислять соответствующий каталог вместо обращения к заранее известному имени. Если убрать единственный источник имени, запись физически останется в архиве, но игра её не запросит. Все файлы .sui считаются безопасными для скрытия независимо от каталога; для unit/*.sii по-прежнему требуется original_game_paths, reference либо явная текстовая ссылка.
 
 Обычный -h применяет проверки. Путь разрешается скрыть, если он присутствует в original_game_paths, имеется в reference-источнике, явно записан в анализируемом текстовом файле либо относится к подтверждённой категории, где родительская прописка всегда перечисляет дочерние пути. Небезопасные элементы остаются видимыми.
 
@@ -122,7 +122,7 @@ TOBJ и поверхность DDS объединяются в одну запи
 
 Если несколько TOBJ используют одну DDS, каждая пара должна оставаться самостоятельной, поэтому сжатая поверхность может повторяться. Это немного увеличивает итоговый размер, но обеспечивает корректный поиск каждой пары игрой. В проверенном моде такие повторы занимали около 11 MiB.
 
-GDeflate для текстур v2 обязателен как формат записи, однако уже несжимаемая поверхность может храниться raw внутри того же типа. Параметр -cm=no относится к обычным файлам и листингам, а не отменяет обработку текстур. HashFS v1, eZIP и AEM специальных GDeflate-записей не создают.""",
+Тип текстурной записи v2 обязателен, но -cm управляет сжатием её поверхности: max использует BEST_RATIO, medium — DEFAULT, min — FASTEST, а no сохраняет поверхность raw внутри того же типа. HashFS v1, eZIP и AEM специальных GDeflate-записей не создают.""",
     "Таблицы HashFS": """HashFS v1 использует единую таблицу фиксированных записей. Положение 1 — стандартный offset 0x1000; положение 3 — сразу после заголовка, то есть фактическое начало служебных данных; положение 2 — конец архива; положение 4 — случайная граница среди полезных нагрузок. Данные и таблица выравниваются, а смещения записываются в заголовок.
 
 HashFS v2 разделяет path table и metadata table. Path table связывает отсортированный CityHash64 с индексом метаданных. Metadata table сообщает тип записи, размеры, смещение, способ сжатия и дополнительные параметры. Обе таблицы можно независимо разместить в начале, на 0x1000, в конце или среди данных, а также независимо сжать zlib.
@@ -158,7 +158,7 @@ HashFS v2 defaults to random non-zero salt. HashFS v1 defaults to zero for compa
 random chooses a new value for every build. An explicit salt makes path hashes reproducible.""",
     "Безопасность скрытия": """Hiding removes a name from a directory listing while retaining its hashed entry. It is safe only when the game already knows the exact path. Models, materials, TOBJ, and many DDS resources are normally reached through direct references and are therefore easier to hide safely.
 
-Definitions under def, /unit/**/*.sii files, locale resources, and map sectors may instead be discovered by directory enumeration. Removing their only name source leaves bytes in the archive but prevents the game from requesting them. Every /unit/**/*.sui is considered safe to hide; unit/*.sii still requires original_game_paths, a reference source, or an explicit text reference.
+Definitions under def, /unit/**/*.sii files, locale resources, and map sectors may instead be discovered by directory enumeration. Removing their only name source leaves bytes in the archive but prevents the game from requesting them. Every .sui file is considered safe to hide regardless of its directory; unit/*.sii still requires original_game_paths, a reference source, or an explicit text reference.
 
 Normal -h applies safeguards. A protected path is hidden only when proven by original_game_paths, a reference source, an explicit text-file reference, or a verified family whose parent definition always names its children. Unsafe candidates remain visible.
 
@@ -169,7 +169,7 @@ TOBJ and DDS surface become one record. Metadata stores dimensions, format, mip 
 
 If several TOBJs share one DDS, each pair remains independent and the compressed surface may be repeated. This can increase archive size, but preserves correct game lookup for every TOBJ path.
 
--cm=no affects ordinary files and listings, not mandatory v2 texture processing. An incompressible surface may be stored raw inside the same texture-record type. V1, eZIP, and AEM do not create these records.""",
+The v2 texture-record type remains mandatory, but -cm controls its surface compression: max uses BEST_RATIO, medium uses DEFAULT, min uses FASTEST, and no stores the surface raw in the same record type. V1, eZIP, and AEM do not create these records.""",
     "Таблицы HashFS": """HashFS v1 has one fixed entry table. Placement 1 is standard offset 0x1000, 3 follows the header, 2 is archive end, and 4 is a random boundary among payloads. Header offsets and alignment describe the selected layout.
 
 HashFS v2 separates a path table from a metadata table. The path table maps sorted CityHash64 values to metadata indexes. Metadata contains type, offset, sizes, compression, and type-specific fields. Each table can independently be placed at the start, 0x1000, end, or among payloads, and each may independently use zlib.
@@ -183,14 +183,14 @@ HELP_EN = {
     "Обзор форматов": "Inputs may be folders or ZIP, 7z, RAR, TAR and other archives supported by the bundled 7-Zip backend. Outputs may be HashFS v1, HashFS v2, Ghostly eZIP or AEM SCS containers. Input type is detected from content, not its extension.",
     "HashFS и CityHash": "HashFS does not have to store clear file names. The table may contain only a 64-bit CityHash64 of each path. The game hashes a requested path the same way. A hidden name therefore requires a path list, references from other files, or structural discovery to recover.",
     "Соль хеширования": "Salt is prepended before CityHash64 and changes every archive hash. HashFS v2 defaults to a random non-zero salt. HashFS v1 defaults to zero; a salted v1 build also creates the compatibility ZIP stub_salt0.scs.",
-    "Безопасность скрытия": "Models and materials are normally reached through direct references, while def, unit/*.sii, locale and map sectors may depend on directory listings. Normal -h hides protected paths only when proven by original_game_paths, a reference source, or an explicit text reference. Every /unit/**/*.sui is always allowed to be hidden. -fh bypasses all protection.",
+    "Безопасность скрытия": "Models and materials are normally reached through direct references, while def, unit/*.sii, locale and map sectors may depend on directory listings. Normal -h hides protected paths only when proven by original_game_paths, a reference source, or an explicit text reference. Every .sui file is always allowed to be hidden regardless of its directory. -fh bypasses all protection.",
     "HashFS v2 и GDeflate": "HashFS v2 combines a valid TOBJ+DDS pair into one texture entry. DDS is converted to DX10 when necessary and its surface is compressed with GDeflate. A DDS shared by several TOBJs is stored in every independent pair.",
     "Таблицы HashFS": "HashFS v1 has one entry table. HashFS v2 separates the path-hash table and metadata; placement and compression are selectable independently. Position 1 is 0x1000, 2 is archive end, 3 follows the header, and 4 is a random payload location.",
     "Несколько входов и выходов": "With one output, inputs are overlaid in order and later files replace earlier ones. Multiple outputs split inputs into consecutive groups: seven inputs and three outputs become 3, 3 and 1. A DDS dependency follows the output containing its TOBJ. Each output may be followed by -> and one quoted option string; verbosity remains global.",
     "-i <источник...>": "One or more folders or archives. ZIP, 7z, RAR, TAR and every format recognized by the bundled 7-Zip are supported. A later source replaces the same path from an earlier source.",
     "-o <архив.scs...>": "One or more output archives. Inputs are split into consecutive groups; seven inputs and three outputs are distributed as 3, 3 and 1.",
     "--file-system, -fs": "Output format: hashfsv2/v2, hashfsv1/v1, eZIP/ez or AEM/aem. HashFS v2 is the default.",
-    "--compression-method, -cm": "Compression for ordinary HashFS entries: max, medium, min or no. The game reads compressed entries normally and the practical runtime difference is usually negligible; no mainly makes the archive much larger. HashFS v2 GDeflate texture processing remains mandatory.",
+    "--compression-method, -cm": "Compression level for every HashFS payload: max, medium, min or no. For HashFS v2 this also selects BEST_RATIO, DEFAULT, FASTEST or a raw surface for texture records. The game reads compressed entries normally, so no mainly makes the archive much larger.",
     "--salt, -salt": "HashFS salt: 0–65535, hexadecimal, or random. Defaults to random for v2 and zero for v1.",
     "--table-mode, -tm": "HashFS table layout. V1 accepts 1–4. V2 controls table/metadata placement and compression, for example 1t2mum, 2t2mc or random.",
     "-e <список>, -e=all": "Encrypt selected SII files with the 3nK wrapper. all selects every packed SII.",
@@ -482,8 +482,8 @@ def _translate_output_ru(line: str) -> str:
          r"--force-hide обходит проверки видимости прописки и карты. Принудительно скрытые файлы могут быть не видны игре."),
         (r"^-ad is disabled for HashFS while -h is active, because explicit empty directory entries would expose hidden directory paths\.$",
          r"Для HashFS параметр -ad отключён, пока используется -h: явные записи пустых каталогов раскрыли бы скрытые пути."),
-        (r"^--compression-method no stores ordinary entries uncompressed\. Mandatory HashFS v2 GDeflate texture entries remain compressed; disabling other compression wastes disk space\.$",
-         r"--compression-method no сохраняет обычные записи без сжатия. Обязательные текстуры GDeflate в HashFS v2 остаются сжатыми; отключение остального сжатия напрасно расходует место."),
+        (r"^--compression-method no stores HashFS file, directory and v2 texture payloads uncompressed; this significantly increases archive size\.$",
+         r"--compression-method no сохраняет файлы, каталоги и текстурные payload HashFS v2 без сжатия; это значительно увеличивает размер архива."),
         (r"^Force-hidden (\d+) files using (\d+) selector\(s\); game visibility was not verified\.$",
          r"Принудительно скрыто \1 файлов по \2 селекторам; видимость в игре не проверялась."),
         (r"^Redundant root/original/reference directory listings omitted: (\d+)\.$",
@@ -562,7 +562,6 @@ def _translate_output_ru(line: str) -> str:
         ("Options:", "Параметры:"), ("Selectors:", "Списки путей:"),
         ("file system=", "файловая система="), ("table mode=", "режим таблицы="),
         ("salt=", "соль="), ("compression=", "сжатие="),
-        ("gdeflate=mandatory", "gdeflate=обязательно"),
         ("empty files=", "пустые файлы="),
         ("empty directories=", "пустые каталоги="),
         ("directory entries=", "записи каталогов="),

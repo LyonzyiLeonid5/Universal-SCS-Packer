@@ -194,13 +194,17 @@ def compress(data: bytes | bytearray | memoryview, level: str = "max") -> bytes:
     """Compress *data* as a genuine GDeflate stream.
 
     ``level`` maps the packer's ``min``, ``medium`` and ``max`` vocabulary to
-    DirectStorage's FASTEST, DEFAULT and BEST_RATIO settings.
+    DirectStorage's FASTEST, DEFAULT and BEST_RATIO settings. ``no`` returns
+    the original surface without loading DirectStorage so the caller can emit
+    an uncompressed HashFS v2 texture record.
     """
+    source = bytes(data)
+    if level == "no":
+        return source
     try:
         setting = _SETTINGS[level]
     except KeyError as exc:
         raise GDeflateError(f"unsupported GDeflate compression level: {level}") from exc
-    source = bytes(data)
     if not source:
         return b""
     return _thread_codec().compress(source, setting)

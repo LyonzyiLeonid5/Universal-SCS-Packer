@@ -100,9 +100,9 @@ ARCHIVE OPTIONS
                                  max    zlib level 9
                                  medium zlib level 6
                                  min    zlib level 1
-                                 no     store file/directory payloads without compression
-                                        (HashFS v2 index tables remain compressed;
-                                         texture entries still require GDeflate)
+                                 no     store file/directory payloads and HashFS v2
+                                        texture surfaces without compression
+                                        (index-table compression is controlled by -tm)
   --table-mode <MODE>          HashFS table mode.
                                HashFS v2:
                                  <N>t_<N>m_<compression>
@@ -180,10 +180,11 @@ OUTPUT DETAIL
   -v2, -v                     Maximum detail: print every archive entry as written.
 
 HIDING SAFETY
-  Map sector files, def/*.sii or def/*.sui files, unit/*.sii files, and files
-  below /locale are never hidden unless the same path is available from -ref
-  or original_game_paths.txt, or that exact path is explicitly referenced by
-  an input text file. Every .sui below /unit is always safe to hide.
+  Map sector files, def/*.sii files, unit/*.sii files, and files below /locale
+  are never hidden unless the same path is available from -ref or
+  original_game_paths.txt, or that exact path is explicitly referenced by an
+  input text file. Every .sui file is always safe to hide, regardless of its
+  directory.
   Proven path-addressed sign, cargo and vehicle-accessory families are always
   safe to hide when selected by -h and are reported during packing.
   Models, materials and textures need no such visibility rule.
@@ -260,6 +261,18 @@ ALWAYS_HIDDEN_TRUCK_ACCESSORY_CATEGORIES = {
 DIRECTORY_DISCOVERED_DEFINITION_PREFIXES = (
     "def/ferry/connection/",
 )
+
+# Definition-tree hiding policy. Keep the /def listing itself so the game can
+# enter the definition tree, but omit the two child listings whose file paths
+# are resolved explicitly. This affects directory metadata only; matching file
+# payloads remain in the archive.
+PRESERVED_DEFINITION_LISTINGS = {
+    "def",
+}
+OMITTED_DEFINITION_LISTINGS = {
+    "def/city",
+    "def/company",
+}
 
 def runtime_directory() -> Path:
     """Return the script directory or PyInstaller's unpacked data directory."""
@@ -948,14 +961,10 @@ def mandatory_definition_category(path: str) -> str | None:
     normalized = normalize_path(path).lower()
     parent = posixpath.dirname(normalized)
     extension = PurePosixPath(normalized).suffix
-    if extension == ".sui" and normalized.startswith("unit/"):
-        return "/unit/**/*.sui"
+    if extension == ".sui":
+        return "/**/*.sui"
     if extension == ".sii" and parent in ALWAYS_HIDDEN_EXACT_CATEGORIES:
         return "/" + parent + "/*.sii"
-    if extension == ".sui" and parent == "def/cargo":
-        return "/def/cargo/*.sui"
-    if extension == ".sui" and parent == "def/vehicle/addon_hookups":
-        return "/def/vehicle/addon_hookups/*.sui"
     if (extension == ".sii" and normalized.startswith("def/vehicle/truck/")
             and posixpath.basename(parent) in ALWAYS_HIDDEN_TRUCK_ACCESSORY_CATEGORIES):
         return ("/def/vehicle/truck/**/"
@@ -964,6 +973,18 @@ def mandatory_definition_category(path: str) -> str | None:
             and posixpath.basename(parent) == "special_paint_job"):
         return "/def/vehicle/trailer/**/special_paint_job/*.sii"
     return None
+
+
+def apply_definition_listing_policy(hidden: set[str], visible: set[str],
+                                    pruned_directories: set[str]) -> None:
+    """Apply the verified directory-listing policy for definition files."""
+    for directory in PRESERVED_DEFINITION_LISTINGS:
+        visible.add(directory)
+        pruned_directories.discard(directory)
+    pruned_directories.update(
+        directory for directory in OMITTED_DEFINITION_LISTINGS
+        if is_selected(directory, hidden)
+    )
 
 
 def visible_protected_paths(roots: list[Path], hidden: set[str], reference: Path | None,
@@ -1046,6 +1067,11 @@ def visible_protected_paths(roots: list[Path], hidden: set[str], reference: Path
             if child not in known_nodes:
                 required_listings.add("/".join(parts[:index - 1]))
     pruned_directories.difference_update(required_listings - {""})
+
+    # Apply the verified policy after the general safety pass so later pruning
+    # cannot remove /def again. A selective -h is respected: city/company are
+    # omitted only when their paths were actually selected.
+    apply_definition_listing_policy(hidden, visible, pruned_directories)
     pruned_directories.add("")
     return (visible, pruned_directories, len(mandatory_allowed),
             len(reference_allowed), len(game_allowed), len(definition_allowed),
@@ -1678,8 +1704,13 @@ def collect_source_map(sources: dict[str, Path], directory_source: Path,
                     and (not is_dir or has_visible_descendant(path))):
                 names.append(("*" if is_dir else "") + name)
         listing = ("\n".join(names) + "\n").encode("utf-8") if names else b""
+        preserve_empty = (not names and (
+            directory in explicit_directories
+            or (directory in PRESERVED_DEFINITION_LISTINGS
+                and directory in visible)
+        ))
         result.append(Item(directory, directory_source, True, listing,
-                           directory in explicit_directories and not names))
+                           preserve_empty))
     return result
 
 
@@ -1897,11 +1928,10 @@ def records_from_items_v2(items: list[Item], encrypted: set[str],
                 referenced_path, sample_flags = _tobj_texture_path(original, item.path)
                 dds_path = resolve_dds_path(referenced_path, item.path)
                 texture_meta, surface = _pack_dds_surface(converted_dds[dds_path])
-                # HashFS v2 texture entries always use GDeflate.  ``no`` only
-                # disables compression for ordinary file/directory payloads.
-                gdeflate_level = (compression_method
-                                  if compression_method != "no" else "max")
-                compressed = compress_gdeflate(surface, gdeflate_level)
+                # The texture-record type remains mandatory, but -cm controls
+                # its surface compression as well.  GDeflate.compress returns
+                # the unchanged surface for ``no`` without loading the codec.
+                compressed = compress_gdeflate(surface, compression_method)
                 use_gdeflate = len(compressed) < len(surface)
                 payload = compressed if use_gdeflate else surface
                 width, height, image_flags, _unused = texture_meta
@@ -3237,7 +3267,8 @@ def report_archive_configuration(reporter: Reporter, options: ArchiveOptions) ->
         reporter.message(
             f"Options: file system={options.file_system}; salt={options.salt}; "
             f"table mode={options.table_mode}; compression={options.compression_method}; "
-            + ("gdeflate=mandatory; " if options.file_system == "hashfsv2" else "")
+            + (f"gdeflate={options.compression_method}; "
+               if options.file_system == "hashfsv2" else "")
             + f"empty files={'included' if options.include_empty_files else 'skipped'}; "
             + f"empty directories={'included' if options.include_directories and not options.hide_requested else 'omitted'}; "
             + f"payload sort={'randomized' if options.sort_payload else 'source order'}; "
@@ -3269,9 +3300,9 @@ def report_archive_configuration(reporter: Reporter, options: ArchiveOptions) ->
             "empty directory entries would expose hidden directory paths.")
     if options.compression_method == "no":
         reporter.message(
-            "WARNING: --compression-method no stores ordinary entries "
-            "uncompressed. Mandatory HashFS v2 GDeflate texture entries remain "
-            "compressed; disabling other compression wastes disk space.")
+            "WARNING: --compression-method no stores HashFS file, directory and "
+            "v2 texture payloads uncompressed; this significantly increases "
+            "archive size.")
 
 
 def main(argv: list[str] | None = None) -> int:
